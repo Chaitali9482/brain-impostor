@@ -1,5 +1,5 @@
 {
   "installCommand": "cd .. && npm ci",
   "buildCommand": "cd .. && npx nx build web",
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": ".next"
 }
