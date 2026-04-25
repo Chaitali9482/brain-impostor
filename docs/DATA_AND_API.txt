@@ -1,0 +1,326 @@
+================================================================
+DATA_AND_API.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project  : Brain Impostor
+Version  : 1.0
+Note     : This project has NO external APIs. All data is
+           local and static. This document covers the internal
+           data layer and all function signatures that act as
+           the "API" between libs.
+================================================================
+
+
+================================================================
+SECTION 1 — DATA LAYER OVERVIEW
+================================================================
+
+Brain Impostor has NO external APIs. Zero network calls.
+All data is hardcoded in a TypeScript file.
+
+DATA SOURCE     : libs/data/src/lib/questions.ts (static array)
+DATA ACCESS     : libs/game functions (filtered, randomised)
+DATA STORAGE    : localStorage (high score only, one key)
+DATA FORMAT     : TypeScript objects (typed by libs/types)
+
+No fetch(), no axios, no API routes, no server actions.
+
+
+================================================================
+SECTION 2 — QUESTION DATA FILE
+================================================================
+
+File : libs/data/src/lib/questions.ts
+
+import { Question } from '@brain-impostor/types';
+
+export const questions: Question[] = [
+  // 120+ questions here (10 per category per difficulty)
+  // See SCHEMA.txt Section 12 for sample questions
+];
+
+This file is the ONLY source of truth for all question content.
+It is imported ONLY by libs/game/src/lib/game.ts.
+apps/web NEVER imports from libs/data directly.
+
+
+================================================================
+SECTION 3 — CONSTANTS DATA FILE
+================================================================
+
+File : libs/data/src/lib/constants.ts
+
+export const CATEGORIES = ['Science', 'Maths', 'GK', 'Food'] as const;
+export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+export const TIMER_SECONDS = 10;
+export const SCORE_PER_CORRECT = 10;
+export const STREAK_FIRE_THRESHOLD = 3;
+export const HIGH_SCORE_KEY = 'brainImpostor_highScore';
+
+
+================================================================
+SECTION 4 — GAME FUNCTIONS (INTERNAL API)
+================================================================
+
+These pure functions in libs/game/src/lib/game.ts serve as the
+interface between raw data and the application. Think of them
+as the internal API layer.
+
+--------------------------------------------------------------
+FUNCTION 1: getFilteredQuestions
+--------------------------------------------------------------
+Purpose  : Filter the questions array by category and difficulty
+Location : libs/game/src/lib/game.ts
+
+Signature:
+  getFilteredQuestions(
+    category   : Category,
+    difficulty : Difficulty
+  ): Question[]
+
+Input:
+  category   - one of "Science" | "Maths" | "GK" | "Food"
+  difficulty - one of "easy" | "medium" | "hard"
+
+Output:
+  Array of Question objects matching both filters.
+  Returns empty array if no match (should not happen with valid data).
+
+Implementation:
+  import { questions } from '@brain-impostor/data';
+  return questions.filter(
+    q => q.category === category && q.difficulty === difficulty
+  );
+
+Called by : apps/web/app/page.tsx (on game start and per question)
+
+--------------------------------------------------------------
+FUNCTION 2: getRandomQuestion
+--------------------------------------------------------------
+Purpose  : Pick one random question from a filtered pool
+Location : libs/game/src/lib/game.ts
+
+Signature:
+  getRandomQuestion(
+    pool : Question[]
+  ): Question
+
+Input:
+  pool - array of Question objects (already filtered, already
+         excluding session history ids)
+
+Output:
+  One randomly selected Question object from the pool.
+
+Implementation:
+  return pool[Math.floor(Math.random() * pool.length)];
+
+Edge case: If pool is empty, caller must handle (replenish pool).
+
+Called by : apps/web/app/page.tsx (inside loadNextQuestion logic)
+
+--------------------------------------------------------------
+FUNCTION 3: shuffleQuestion
+--------------------------------------------------------------
+Purpose  : Shuffle the 4 statements and update answerIndex
+           to match the new position of the false statement.
+           This is the most critical function in the game.
+Location : libs/game/src/lib/game.ts
+
+Signature:
+  shuffleQuestion(
+    question : Question
+  ): Question
+
+Input:
+  question - a Question object with original statement order
+
+Output:
+  A NEW Question object (original not mutated) with:
+    statements  - shuffled order
+    answerIndex - updated to reflect new position of false statement
+    All other fields unchanged (id, category, difficulty, explanation)
+
+Implementation:
+  Step 1: Create index-tracking pairs
+    const pairs = question.statements.map((text, index) => ({
+      text,
+      isCorrect: index === question.answerIndex
+    }));
+
+  Step 2: Fisher-Yates shuffle
+    for (let i = pairs.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+    }
+
+  Step 3: Rebuild question
+    return {
+      ...question,
+      statements: pairs.map(p => p.text) as [string,string,string,string],
+      answerIndex: pairs.findIndex(p => p.isCorrect)
+    };
+
+Called by : apps/web/app/page.tsx (after getRandomQuestion)
+
+WHY THIS IS CRITICAL:
+  Without tracking which item is the false statement before
+  shuffling, the answerIndex would point to the wrong card
+  after reordering. This function guarantees the game always
+  knows which card is correct even after shuffle.
+
+--------------------------------------------------------------
+FUNCTION 4: isCorrectAnswer
+--------------------------------------------------------------
+Purpose  : Pure check — did player select the false statement?
+Location : libs/game/src/lib/game.ts
+
+Signature:
+  isCorrectAnswer(
+    selected : number,
+    correct  : number
+  ): boolean
+
+Input:
+  selected - the index the player clicked (0-3)
+  correct  - shuffledAnswerIdx (post-shuffle answerIndex)
+
+Output:
+  true  if selected === correct
+  false if selected !== correct
+
+Implementation:
+  return selected === correct;
+
+Note: This is intentionally simple. The complexity is in
+shuffleQuestion which ensures correct always maps accurately.
+
+Called by : apps/web/app/page.tsx (inside evaluateAnswer)
+
+
+================================================================
+SECTION 5 — LOCALSTORAGE API (PERSISTENCE LAYER)
+================================================================
+
+The ONLY persisted data is the high score.
+Key: brainImpostor_highScore
+
+--------------------------------------------------------------
+READ (on app mount)
+--------------------------------------------------------------
+Called in : apps/web/app/page.tsx inside useEffect([], [])
+
+  const raw = localStorage.getItem('brainImpostor_highScore');
+  const storedHighScore = raw ? parseInt(raw, 10) : 0;
+  setHighScore(storedHighScore);
+
+Handle unavailability (private browsing):
+  try {
+    const raw = localStorage.getItem('brainImpostor_highScore');
+    const storedHighScore = raw ? parseInt(raw, 10) : 0;
+    setHighScore(storedHighScore);
+  } catch {
+    setHighScore(0);
+  }
+
+--------------------------------------------------------------
+WRITE (on new high score achieved)
+--------------------------------------------------------------
+Called in : apps/web/app/page.tsx inside evaluateAnswer
+
+  if (newScore > highScore) {
+    setHighScore(newScore);
+    try {
+      localStorage.setItem('brainImpostor_highScore', String(newScore));
+    } catch {
+      // silently fail — game continues without persistence
+    }
+  }
+
+--------------------------------------------------------------
+CLEAR (never called automatically)
+--------------------------------------------------------------
+If a "Reset High Score" feature is added in future:
+  localStorage.removeItem('brainImpostor_highScore');
+
+
+================================================================
+SECTION 6 — QUESTION POOL MANAGEMENT (IN-MEMORY)
+================================================================
+
+Session history is managed in-memory (not persisted).
+It tracks which question ids have been used in the current session
+to avoid repeating questions.
+
+State in page.tsx:
+  const [sessionHistory, setSessionHistory] = useState<number[]>([]);
+
+loadNextQuestion logic:
+  Step 1: Get full pool
+    const pool = getFilteredQuestions(selectedCategory, selectedDifficulty);
+
+  Step 2: Exclude already-used questions
+    const available = pool.filter(q => !sessionHistory.includes(q.id));
+
+  Step 3: If pool exhausted, reset history and use full pool
+    if (available.length === 0) {
+      setSessionHistory([]);
+      available = pool;
+    }
+
+  Step 4: Pick random from available
+    const question = getRandomQuestion(available);
+
+  Step 5: Track id
+    setSessionHistory(prev => [...prev, question.id]);
+
+  Step 6: Shuffle and set active question
+    const shuffled = shuffleQuestion(question);
+    setCurrentQuestion(shuffled);
+
+
+================================================================
+SECTION 7 — DATA FLOW DIAGRAM
+================================================================
+
+libs/data/questions.ts  (120+ raw Question objects)
+          |
+          | imported by
+          v
+libs/game/game.ts  (getFilteredQuestions, getRandomQuestion,
+          |         shuffleQuestion, isCorrectAnswer)
+          |
+          | called by
+          v
+apps/web/page.tsx  (loadNextQuestion, evaluateAnswer)
+          |
+          | props passed to
+          v
+libs/ui components  (GameCard, ScoreBoard, ResultModal, etc.)
+          |
+          | user interaction fires callbacks to
+          v
+apps/web/page.tsx  (onSelect, onNext, onRestart)
+
+
+================================================================
+SECTION 8 — WHAT THIS PROJECT HAS INSTEAD OF AN API
+================================================================
+
+Traditional apps use an API to:
+  - Fetch questions     → replaced by: static questions.ts file
+  - Submit scores       → replaced by: localStorage highScore
+  - User sessions       → replaced by: in-memory sessionHistory
+  - Auth/user data      → not needed — no accounts
+  - Analytics           → not implemented (by design)
+
+This architecture means:
+  - Zero network latency
+  - Works offline after initial page load
+  - No API keys to manage
+  - No rate limits
+  - No server costs
+  - Instant question loading
+
+================================================================
+END OF DATA_AND_API.txt
+================================================================

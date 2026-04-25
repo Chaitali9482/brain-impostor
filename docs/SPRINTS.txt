@@ -1,0 +1,910 @@
+================================================================
+SPRINTS.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project       : Brain Impostor
+Total Sprints : 13 (Sprint 0 through Sprint 12)
+Version       : 1.0
+================================================================
+
+HOW TO USE THIS FILE
+---------------------
+Work through one sprint at a time.
+Do NOT proceed to the next sprint until ALL acceptance criteria
+for the current sprint are met.
+Each sprint has an explicit STOP gate at the bottom.
+
+================================================================
+
+
+================================================================
+SPRINT 0 — NX WORKSPACE SETUP
+================================================================
+Goal     : Create monorepo with Next.js app + 4 libraries
+Phase    : Foundation
+Produces : Runnable nx serve web on localhost:3000
+
+RULES
+  x  Do not create any components
+  x  Do not write any game logic
+  x  Do not add any question data
+  x  Infrastructure and configuration ONLY
+
+TASKS
+
+  Task 0.1 — Install NX CLI
+    npm install -g nx
+
+  Task 0.2 — Create NX Workspace
+    npx create-nx-workspace@latest brain-impostor
+    Select: Integrated monorepo
+    Select: Next.js
+    App name: web
+    Style: CSS (Tailwind added separately)
+    NX Cloud: No
+
+  Task 0.3 — Verify app runs
+    cd brain-impostor
+    nx serve web
+    Check: http://localhost:3000 opens without errors
+
+  Task 0.4 — Add Tailwind CSS
+    nx g @nx/next:setup-tailwind web
+    Verify: tailwind.config.js created in apps/web
+    Verify: @tailwind directives in globals.css
+
+  Task 0.5 — Generate 4 libraries
+    nx g @nx/js:lib ui
+    nx g @nx/js:lib game
+    nx g @nx/js:lib data
+    nx g @nx/js:lib types
+    (Accept all defaults)
+
+  Task 0.6 — Configure path aliases in tsconfig.base.json
+    Add to compilerOptions.paths:
+    "@brain-impostor/types": ["libs/types/src/index.ts"]
+    "@brain-impostor/data":  ["libs/data/src/index.ts"]
+    "@brain-impostor/game":  ["libs/game/src/index.ts"]
+    "@brain-impostor/ui":    ["libs/ui/src/index.ts"]
+
+  Task 0.7 — Enable strict TypeScript
+    In every tsconfig.json (root, app, each lib):
+    "strict": true
+    "noImplicitAny": true
+
+  Task 0.8 — Verify folder structure
+    Confirm exists:
+      apps/web/app/page.tsx
+      libs/types/src/index.ts
+      libs/data/src/index.ts
+      libs/game/src/index.ts
+      libs/ui/src/index.ts
+
+FILES CREATED THIS SPRINT
+  nx.json                         workspace root
+  package.json                    workspace root
+  tsconfig.base.json              workspace root (with aliases)
+  apps/web/tailwind.config.js     Tailwind config
+  libs/types/src/index.ts         empty barrel
+  libs/data/src/index.ts          empty barrel
+  libs/game/src/index.ts          empty barrel
+  libs/ui/src/index.ts            empty barrel
+
+ACCEPTANCE CRITERIA
+  [ ] nx serve web runs on localhost:3000 with no errors
+  [ ] nx graph shows 5 projects (web + 4 libs)
+  [ ] All 4 @brain-impostor/* path aliases resolve
+  [ ] TypeScript strict mode enabled in all tsconfigs
+  [ ] Tailwind CSS installed and working in apps/web
+
+>> STOP — Do not proceed until nx serve runs cleanly <<
+
+
+================================================================
+SPRINT 1 — TYPES (STRICT FOUNDATION)
+================================================================
+Goal     : Define all TypeScript types in libs/types
+Phase    : Foundation
+Produces : Typed foundation — no logic, no UI, no data
+
+RULES
+  x  No logic
+  x  No UI
+  x  No data
+  x  Types and interfaces ONLY
+  x  No 'any' type
+
+TASKS
+
+  Task 1.1 — Create question.ts
+    File: libs/types/src/lib/question.ts
+
+    export type Category = "Science" | "Maths" | "GK" | "Food";
+
+    export type Difficulty = "easy" | "medium" | "hard";
+
+    export type Question = {
+      id          : number;
+      category    : Category;
+      difficulty  : Difficulty;
+      statements  : [string, string, string, string];
+      answerIndex : number;
+      explanation : string;
+    };
+
+  Task 1.2 — Create component prop types
+    File: libs/types/src/lib/props.ts
+
+    import { Question, Category, Difficulty } from './question';
+
+    export type GameCardProps = {
+      statement     : string;
+      index         : number;
+      selectedIndex : number | null;
+      correctIndex  : number;
+      isAnswered    : boolean;
+      onSelect      : (index: number) => void;
+    };
+
+    export type ScoreBoardProps = {
+      score     : number;
+      streak    : number;
+      highScore : number;
+      timeLeft  : number;
+    };
+
+    export type ResultModalProps = {
+      isCorrect   : boolean;
+      explanation : string;
+      onNext      : () => void;
+    };
+
+    export type CategorySelectProps = {
+      selected  : Category | null;
+      onSelect  : (category: Category) => void;
+    };
+
+    export type DifficultySelectProps = {
+      selected  : Difficulty | null;
+      onSelect  : (difficulty: Difficulty) => void;
+    };
+
+    export type ProgressBarProps = {
+      timeLeft  : number;
+      maxTime   : number;
+    };
+
+  Task 1.3 — Update barrel export
+    File: libs/types/src/index.ts
+    export * from './lib/question';
+    export * from './lib/props';
+
+FILES CREATED THIS SPRINT
+  libs/types/src/lib/question.ts     Category, Difficulty, Question types
+  libs/types/src/lib/props.ts        All component prop types
+  libs/types/src/index.ts            (updated — exports all)
+
+ACCEPTANCE CRITERIA
+  [ ] Question type has all 6 required fields
+  [ ] statements field is a tuple type (exactly 4 strings)
+  [ ] Category union has exactly 4 values
+  [ ] Difficulty union has exactly 3 values
+  [ ] All 6 component prop types defined
+  [ ] Zero TypeScript errors
+  [ ] Zero 'any' usage
+
+>> STOP — No logic, no UI, no data yet <<
+
+
+================================================================
+SPRINT 2 — DATA (STATIC QUESTION BANK)
+================================================================
+Goal     : Create 120+ questions in libs/data
+Phase    : Foundation
+Produces : Static data layer ready for game functions to use
+
+RULES
+  x  No game logic
+  x  No UI
+  x  Do NOT modify the Question schema
+  x  Static data ONLY — no fetch, no API
+
+TASKS
+
+  Task 2.1 — Create constants.ts
+    File: libs/data/src/lib/constants.ts
+    (see SCHEMA.txt Section 10 for full constants)
+    export const CATEGORIES = [...] as const;
+    export const DIFFICULTIES = [...] as const;
+    export const TIMER_SECONDS = 10;
+    export const SCORE_PER_CORRECT = 10;
+    export const STREAK_FIRE_THRESHOLD = 3;
+    export const HIGH_SCORE_KEY = 'brainImpostor_highScore';
+
+  Task 2.2 — Create questions.ts with 120+ questions
+    File: libs/data/src/lib/questions.ts
+    Import: Question type from @brain-impostor/types
+    Create: questions array with minimum 10 per category per difficulty
+    Verify: RULE-01 through RULE-10 from SCHEMA.txt Section 5
+
+    Distribution must be:
+    Science  easy x10 + medium x10 + hard x10 = 30
+    Maths    easy x10 + medium x10 + hard x10 = 30
+    GK       easy x10 + medium x10 + hard x10 = 30
+    Food     easy x10 + medium x10 + hard x10 = 30
+    TOTAL = 120 minimum
+
+  Task 2.3 — Update barrel export
+    File: libs/data/src/index.ts
+    export * from './lib/questions';
+    export * from './lib/constants';
+
+FILES CREATED THIS SPRINT
+  libs/data/src/lib/constants.ts     All game constants
+  libs/data/src/lib/questions.ts     120+ Question objects
+  libs/data/src/index.ts             (updated)
+
+ACCEPTANCE CRITERIA
+  [ ] 120+ questions in array (10 per category per difficulty)
+  [ ] Every question has exactly 4 statements
+  [ ] Every answerIndex is 0, 1, 2, or 3
+  [ ] Every explanation field is non-empty
+  [ ] Every id is unique
+  [ ] TypeScript accepts the array with no errors
+  [ ] Category and difficulty values match type unions exactly
+
+>> STOP — No game functions or UI yet <<
+
+
+================================================================
+SPRINT 3 — GAME ENGINE (PURE FUNCTIONS)
+================================================================
+Goal     : Implement all game logic as pure functions in libs/game
+Phase    : Core Logic
+Produces : Fully testable game engine with no UI dependency
+
+RULES
+  x  Pure functions only — no React, no side effects
+  x  No UI components
+  x  Imports: @brain-impostor/types and @brain-impostor/data ONLY
+  x  No 'any' type
+
+TASKS
+
+  Task 3.1 — Create game.ts with 4 functions
+    File: libs/game/src/lib/game.ts
+
+    Function 1: getFilteredQuestions(category, difficulty): Question[]
+      Filter questions array by both category and difficulty
+      Return matching subset
+
+    Function 2: getRandomQuestion(pool: Question[]): Question
+      Pick random from pool using Math.random()
+      Return one Question object
+
+    Function 3: shuffleQuestion(question: Question): Question
+      Create index-tracking pairs (text + isCorrect flag)
+      Apply Fisher-Yates shuffle to pairs
+      Find new position of false statement
+      Return new Question with updated statements and answerIndex
+      DO NOT mutate original question object
+
+    Function 4: isCorrectAnswer(selected: number, correct: number): boolean
+      Return selected === correct
+      (Simple but kept separate for testability)
+
+    See DATA_AND_API.txt Section 4 for full implementations.
+
+  Task 3.2 — Update barrel export
+    File: libs/game/src/index.ts
+    export * from './lib/game';
+
+  Task 3.3 — Manual verification
+    Write a quick test in console or temporary file:
+    const q = questions[0];
+    const shuffled = shuffleQuestion(q);
+    console.log(shuffled.statements[shuffled.answerIndex]);
+    // Must print the false statement text (same as q.statements[q.answerIndex])
+
+FILES CREATED THIS SPRINT
+  libs/game/src/lib/game.ts      4 pure game functions
+  libs/game/src/index.ts         (updated)
+
+ACCEPTANCE CRITERIA
+  [ ] getFilteredQuestions returns correct subset for each combo
+  [ ] getRandomQuestion returns different results on repeated calls
+  [ ] shuffleQuestion: shuffled.statements[shuffled.answerIndex]
+      equals original.statements[original.answerIndex] (always)
+  [ ] shuffleQuestion does NOT mutate original question object
+  [ ] isCorrectAnswer returns true only on exact match
+  [ ] Zero TypeScript errors
+  [ ] No React imports, no UI imports anywhere in game.ts
+
+>> STOP — Game logic complete. No UI wired yet. <<
+
+
+================================================================
+SPRINT 4 — BASIC GAME UI (WORKING END-TO-END, UGLY IS OK)
+================================================================
+Goal     : Game works fully in apps/web — no visual polish needed
+Phase    : Core UI
+Produces : Fully functional game (ugly but playable)
+
+RULES
+  x  No design focus — functionality first
+  x  Plain Tailwind only — no custom CSS
+  x  Components can be inline in page.tsx for now (refactor in Sprint 5)
+
+TASKS
+
+  Task 4.1 — Set up page.tsx with all state
+    File: apps/web/app/page.tsx
+    Add 'use client' directive at top
+    Define all state using useState:
+      selectedCategory, selectedDifficulty, gameStarted,
+      currentQuestion, selectedIndex, isAnswered, score, streak,
+      highScore, sessionHistory, showModal, isCorrect, timeLeft
+
+  Task 4.2 — Implement loadNextQuestion function
+    Filter questions using getFilteredQuestions
+    Exclude sessionHistory ids
+    If pool empty: reset sessionHistory
+    Pick random using getRandomQuestion
+    Shuffle using shuffleQuestion
+    Set state: currentQuestion, selectedIndex=null, isAnswered=false,
+               timeLeft=10, showModal=false
+
+  Task 4.3 — Implement evaluateAnswer function
+    Use isCorrectAnswer to check
+    If correct: score+=10, streak+=1, check/update highScore
+    If wrong: streak=0
+    Set isAnswered=true, isCorrect=(result), showModal=true
+
+  Task 4.4 — Implement timer via useEffect
+    Start setInterval when gameStarted=true and !isAnswered
+    Decrement timeLeft each tick
+    On timeLeft===0: call evaluateAnswer(null) — timeout path
+    Cleanup interval on unmount and when isAnswered changes
+
+  Task 4.5 — Implement localStorage read on mount
+    useEffect([], []) — read brainImpostor_highScore
+    Parse and set highScore state
+
+  Task 4.6 — Render Setup Screen (when !gameStarted)
+    4 category buttons (plain text buttons, no style)
+    3 difficulty buttons (plain text buttons, no style)
+    Start Game button (disabled until both selected)
+
+  Task 4.7 — Render Question Screen (when gameStarted)
+    Show: category, difficulty, score, streak, timeLeft
+    Show: 4 clickable button cards (one per statement)
+    On card click: call evaluateAnswer(index
+
+  Task 4.8 — Render Result (inline, no modal yet)
+    After answer: show "Correct!" or "Wrong!"
+    Show explanation text
+    Show "Next Question" button → calls loadNextQuestion
+
+FILES CREATED / UPDATED THIS SPRINT
+  apps/web/app/page.tsx      Full game logic and basic UI
+
+ACCEPTANCE CRITERIA
+  [ ] Setup screen shows category + difficulty buttons
+  [ ] Start Game disabled until both category and difficulty chosen
+  [ ] Question loads and shows 4 clickable statements
+  [ ] Clicking correct card → score increases by 10
+  [ ] Clicking wrong card → score unchanged, streak resets
+  [ ] Timer counts down from 10 to 0
+  [ ] Timeout treated as wrong answer
+  [ ] Explanation shown after every answer
+  [ ] Next Question loads a new shuffled question
+  [ ] High score persists on page refresh (localStorage)
+  [ ] Game never serves same question twice in session (sessionHistory)
+
+>> STOP — Game fully functional. Polish comes next. <<
+
+
+================================================================
+SPRINT 5 — UI COMPONENT SYSTEM
+================================================================
+Goal     : Extract all UI into clean, typed components in libs/ui
+Phase    : Component Build
+Produces : Reusable, typed, styled component library
+
+RULES
+  x  No game logic inside any component
+  x  Components receive props and fire callbacks ONLY
+  x  Tailwind classes only — no inline styles
+  x  Import types from @brain-impostor/types
+
+TASKS
+
+  Task 5.1 — Create GameCard.tsx
+    File: libs/ui/src/lib/GameCard.tsx
+    Props: GameCardProps (from @brain-impostor/types)
+    Renders: statement text on a clickable card
+    Visual states:
+      default   → bg-slate-800, hover:bg-slate-700
+      correct   → bg-green-600, text-white
+      wrong     → bg-red-600, text-white
+      disabled  → opacity-50, no hover
+    Style: rounded-2xl, p-4, transition-all duration-200
+
+  Task 5.2 — Create ScoreBoard.tsx
+    File: libs/ui/src/lib/ScoreBoard.tsx
+    Props: ScoreBoardProps
+    Renders: Score | Streak | High Score | Timer
+    Timer <= 3: text-red-400 (urgency)
+    Streak >= 3: show flame emoji or glow class
+
+  Task 5.3 — Create CategorySelect.tsx
+    File: libs/ui/src/lib/CategorySelect.tsx
+    Props: CategorySelectProps
+    Renders: 4 category buttons in a row/grid
+    Selected button: highlighted with accent color
+
+  Task 5.4 — Create DifficultySelect.tsx
+    File: libs/ui/src/lib/DifficultySelect.tsx
+    Props: DifficultySelectProps
+    Renders: 3 difficulty buttons
+    Selected button: highlighted with accent color
+
+  Task 5.5 — Create ResultModal.tsx
+    File: libs/ui/src/lib/ResultModal.tsx
+    Props: ResultModalProps
+    Renders: Fixed overlay with outcome + explanation + Next button
+    Correct: green accent + "Correct!" label
+    Wrong:   red accent + "Wrong!" label
+
+  Task 5.6 — Create ProgressBar.tsx
+    File: libs/ui/src/lib/ProgressBar.tsx
+    Props: ProgressBarProps
+    Renders: Horizontal bar showing timeLeft/maxTime percentage
+    Width transitions smoothly as timer counts down
+
+  Task 5.7 — Update barrel export
+    File: libs/ui/src/index.ts
+    Export all 6 components
+
+  Task 5.8 — Replace inline UI in page.tsx with components
+    Import all components from @brain-impostor/ui
+    Remove all inline rendering from Sprint 4
+    Pass correct props from state to each component
+    Wire all callbacks (onSelect, onNext, onRestart)
+
+FILES CREATED THIS SPRINT
+  libs/ui/src/lib/GameCard.tsx
+  libs/ui/src/lib/ScoreBoard.tsx
+  libs/ui/src/lib/CategorySelect.tsx
+  libs/ui/src/lib/DifficultySelect.tsx
+  libs/ui/src/lib/ResultModal.tsx
+  libs/ui/src/lib/ProgressBar.tsx
+  libs/ui/src/index.ts               (updated)
+  apps/web/app/page.tsx              (refactored)
+
+ACCEPTANCE CRITERIA
+  [ ] All 6 components in libs/ui with correct prop types
+  [ ] No game logic inside any component
+  [ ] GameCard shows 3 visual states (default/correct/wrong)
+  [ ] ScoreBoard timer turns red at <= 3 seconds
+  [ ] ResultModal shows correct outcome label
+  [ ] All components imported from @brain-impostor/ui in page.tsx
+  [ ] Zero TypeScript errors across all libs and app
+
+>> STOP — Component system complete. <<
+
+
+================================================================
+SPRINT 6 — GAME EXPERIENCE (FEEL LIKE A REAL GAME)
+================================================================
+Goal     : Polish timer, scoring, and feedback interactions
+Phase    : Game Feel
+Produces : Smooth, responsive game experience
+
+RULES
+  x  No new components
+  x  No logic changes
+  x  Wiring and UX improvements only
+
+TASKS
+
+  Task 6.1 — Fix timer useEffect robustness
+    Ensure timer dependency array includes currentQuestion
+    so timer resets properly on every new question
+    Ensure clearInterval is called on EVERY cleanup path
+
+  Task 6.2 — Add streak visual feedback
+    In ScoreBoard: show streak count with flame emoji when >= 3
+    Example: "Streak: 5 🔥"
+
+  Task 6.3 — Timer urgency state
+    Pass timeLeft to ProgressBar
+    ProgressBar turns red (bg-red-500) when timeLeft <= 3
+    ScoreBoard timer text turns red when timeLeft <= 3
+
+  Task 6.4 — Correct card always highlighted
+    Ensure GameCard always shows green on the correct card
+    even when player selected wrong card
+    (correctIndex = shuffledAnswerIdx passed as prop)
+
+  Task 6.5 — Disabled cards after answer
+    Cards not selected AND not correct become dimmed after answer
+    Use 'disabled' visual state in GameCard
+
+  Task 6.6 — Restart game functionality
+    Add a "Change Settings" or "Restart" button visible during game
+    On click: reset all state, return to Setup Screen
+    (highScore NOT reset — keeps from localStorage)
+
+FILES UPDATED THIS SPRINT
+  apps/web/app/page.tsx        Timer fix, restart handler
+  libs/ui/src/lib/ScoreBoard.tsx    Streak flame, timer urgency
+  libs/ui/src/lib/GameCard.tsx      Disabled state, card logic
+  libs/ui/src/lib/ProgressBar.tsx   Red on urgency
+
+ACCEPTANCE CRITERIA
+  [ ] Timer resets to 10 on every new question (not carry-over)
+  [ ] Streak shows flame at 3 or more
+  [ ] Timer bar and number turn red at 3 seconds or fewer
+  [ ] After answer: correct card always green, wrong card red, others dim
+  [ ] Restart button returns to Setup Screen
+  [ ] highScore preserved across restart (localStorage)
+
+>> STOP — Game experience solid. <<
+
+
+================================================================
+SPRINT 7 — UI POLISH (MAKE IT LOOK WOW)
+================================================================
+Goal     : Premium visual polish — animations, micro-interactions
+Phase    : Polish
+Produces : Professional, game-quality UI
+
+RULES
+  x  No logic changes
+  x  Styling ONLY
+  x  Tailwind classes + CSS transitions only (no external anim libs)
+
+TASKS
+
+  Task 7.1 — Card press animation
+    Add: active:scale-95 to GameCard button element
+    Add: transition-transform duration-100
+
+  Task 7.2 — Question fade transition
+    On new question load: brief fade-out → fade-in
+    Implement using opacity state (0 → 1 on mount)
+    CSS: transition-opacity duration-300
+
+  Task 7.3 — Dark theme deep polish
+    Body/layout:  bg-slate-900
+    Cards:        bg-slate-800 border border-slate-700
+    Correct:      bg-green-600 border-green-400
+    Wrong:        bg-red-700 border-red-500
+    Accent text:  text-violet-400
+    Scoreboard:   bg-slate-800/80 backdrop-blur-sm
+
+  Task 7.4 — Hover effects
+    GameCard hover: hover:scale-105 hover:border-violet-400
+    Category/Difficulty buttons: hover:bg-slate-700
+
+  Task 7.5 — Streak glow effect
+    When streak >= 3: add ring ring-yellow-400 to streak display
+    Or: use animate-pulse on flame emoji
+
+  Task 7.6 — ResultModal entrance animation
+    Add: animate-in (fade-in scale-up)
+    Simple CSS keyframe or Tailwind animate class
+
+  Task 7.7 — Mobile layout pass
+    Cards: full width on mobile (w-full)
+    Grid: single column on mobile, 2 cols on md:
+    Buttons: min-h-[56px] for tap targets
+    Font: text-lg on cards for readability
+
+FILES UPDATED THIS SPRINT
+  libs/ui/src/lib/GameCard.tsx
+  libs/ui/src/lib/ScoreBoard.tsx
+  libs/ui/src/lib/ResultModal.tsx
+  libs/ui/src/lib/CategorySelect.tsx
+  libs/ui/src/lib/DifficultySelect.tsx
+  apps/web/app/globals.css           (any custom keyframes)
+  apps/web/app/layout.tsx            (dark body class)
+
+ACCEPTANCE CRITERIA
+  [ ] Cards press (scale down) on click
+  [ ] Cards lift (scale up) on hover
+  [ ] Correct card glows green on answer
+  [ ] Wrong card glows red on answer
+  [ ] Streak shows flame glow at 3+
+  [ ] ResultModal fades in smoothly
+  [ ] Dark theme consistent across all screens
+  [ ] All tap targets >= 44px on mobile
+
+>> STOP — UI polish complete. <<
+
+
+================================================================
+SPRINT 8 — LOCAL STORAGE (PERSISTENCE)
+================================================================
+Goal     : Robust localStorage handling with error boundaries
+Phase    : Persistence
+Produces : Reliable high score persistence
+
+RULES
+  x  Only brainImpostor_highScore key used
+  x  Wrap all localStorage calls in try/catch
+  x  No other data persisted
+
+TASKS
+
+  Task 8.1 — Robust localStorage read on mount
+    Wrap in try/catch for private browsing
+    Parse as integer with parseInt(raw, 10)
+    Default to 0 on any failure
+
+  Task 8.2 — Write on new high score only
+    Compare new score to current highScore before writing
+    Only write if newScore > highScore
+    Wrap in try/catch
+
+  Task 8.3 — Display high score in ScoreBoard
+    Show "Best: {highScore}" in ScoreBoard
+    Update visually immediately when new high score set
+
+  Task 8.4 — Test persistence
+    Set a high score → refresh page → verify it shows
+
+FILES UPDATED THIS SPRINT
+  apps/web/app/page.tsx     localStorage read + write with try/catch
+  libs/ui/src/lib/ScoreBoard.tsx    Display "Best" field
+
+ACCEPTANCE CRITERIA
+  [ ] highScore loads from localStorage on page mount
+  [ ] highScore updates immediately when beaten
+  [ ] highScore shown in ScoreBoard
+  [ ] Page refresh preserves highScore
+  [ ] No crash in private browsing mode (try/catch works)
+  [ ] Only one localStorage key ever used
+
+>> STOP — Persistence complete. <<
+
+
+================================================================
+SPRINT 9 — CATEGORY + DIFFICULTY UI (SETUP SCREEN POLISH)
+================================================================
+Goal     : Make the Setup Screen feel polished and intuitive
+Phase    : Polish
+Produces : Premium onboarding experience
+
+TASKS
+
+  Task 9.1 — Polish CategorySelect layout
+    Display as 2x2 grid on mobile, 4-in-row on desktop
+    Each button: icon or emoji + label
+    Science: "🔬 Science"   Maths: "📐 Maths"
+    GK:      "🌍 GK"        Food:  "🍕 Food"
+
+  Task 9.2 — Polish DifficultySelect layout
+    Display as 3-button row
+    Easy:   green accent when selected
+    Medium: yellow accent when selected
+    Hard:   red accent when selected
+
+  Task 9.3 — Setup screen layout
+    Centered card layout on dark bg
+    Title: "Brain Impostor" with subtitle
+    Category section heading + buttons
+    Difficulty section heading + buttons
+    Start Game button: prominent, full-width, disabled until both chosen
+
+  Task 9.4 — Filter feedback
+    Show question count for selected category + difficulty
+    Example: "32 questions available"
+
+FILES UPDATED THIS SPRINT
+  libs/ui/src/lib/CategorySelect.tsx
+  libs/ui/src/lib/DifficultySelect.tsx
+  apps/web/app/page.tsx (setup screen layout)
+
+ACCEPTANCE CRITERIA
+  [ ] Setup screen has clear visual hierarchy
+  [ ] Category buttons show emoji + label
+  [ ] Difficulty buttons show color coding
+  [ ] Start Game button clearly disabled when incomplete
+  [ ] Question count shown for selected combination
+  [ ] Looks good on mobile and desktop
+
+>> STOP — Setup screen complete. <<
+
+
+================================================================
+SPRINT 10 — MOBILE OPTIMIZATION
+================================================================
+Goal     : Perfect mobile experience (primary target platform)
+Phase    : Optimization
+Produces : Game that feels native on mobile
+
+TASKS
+
+  Task 10.1 — Full-width cards on mobile
+    GameCard: w-full on mobile, max-w-md in container
+
+  Task 10.2 — Card grid layout
+    2 cards per row on mobile (2x2 grid)
+    grid grid-cols-2 gap-3 on mobile
+    grid-cols-2 md:grid-cols-2 (consistent)
+
+  Task 10.3 — Large tap zones
+    All buttons: min-h-[56px] minimum
+    Card text: text-base minimum (not small)
+    Padding: p-4 minimum on all interactive elements
+
+  Task 10.4 — Vertical spacing
+    ScoreBoard: compact single row on mobile
+    Use flex-wrap if needed for small screens
+
+  Task 10.5 — Prevent zoom on input (N/A — no inputs)
+    Verify font-size 16px+ on all visible text
+
+  Task 10.6 — Test on 375px viewport
+    Chrome DevTools: iPhone SE simulation
+    Verify no overflow, no cut-off text, no tiny buttons
+
+FILES UPDATED THIS SPRINT
+  libs/ui/src/lib/GameCard.tsx
+  libs/ui/src/lib/ScoreBoard.tsx
+  apps/web/app/page.tsx (layout wrapper classes)
+
+ACCEPTANCE CRITERIA
+  [ ] Game fully playable at 375px viewport width
+  [ ] All tap targets >= 44px (ideally 56px)
+  [ ] No horizontal scroll at any mobile width
+  [ ] Cards readable and tappable with thumbs
+  [ ] ScoreBoard legible on small screens
+
+>> STOP — Mobile optimization complete. <<
+
+
+================================================================
+SPRINT 11 — TESTING AND QA
+================================================================
+Goal     : Verify every feature works correctly end-to-end
+Phase    : QA
+Produces : Bug-free, reliable game
+
+TASKS
+
+  Task 11.1 — Shuffle correctness test
+    Play 10 rounds: after every answer, verify correct card is green
+    Verify the green card always matches explanation context
+    Log: console.log(currentQuestion.statements[currentQuestion.answerIndex])
+    Confirm it matches the highlighted green card text
+
+  Task 11.2 — Timer reset test
+    Let timer reach 0 → verify it shows "Wrong" feedback
+    Click Next → verify timer resets to exactly 10
+    Answer quickly → verify timer stops immediately
+
+  Task 11.3 — Score logic test
+    Correct answer: score should be previous + 10
+    Wrong answer: score should be unchanged
+    Timeout: score should be unchanged
+    Verify with 10+ rounds
+
+  Task 11.4 — Streak test
+    3 correct in a row → verify flame appears
+    1 wrong → verify streak resets to 0
+    Timeout → verify streak resets to 0
+
+  Task 11.5 — Session history test
+    Play until same question appears → should not repeat
+    If pool < 10 questions: verify pool resets after exhaustion
+
+  Task 11.6 — High score test
+    Set score to X → refresh → verify X still shown
+    Get new score Y > X → verify localStorage updates
+    Get score Z < X → verify localStorage NOT updated
+
+  Task 11.7 — Responsive test
+    Test at: 375px, 414px, 768px, 1024px, 1440px
+    Verify no layout breaks at any width
+
+  Task 11.8 — Dependency check
+    nx graph → verify no forbidden imports
+    libs/ui must not import libs/game
+    apps/web must not import libs/data directly
+
+  Task 11.9 — TypeScript check
+    nx run web:type-check
+    Must show 0 errors
+
+ACCEPTANCE CRITERIA
+  [ ] Shuffle always shows correct green card (verified 10 rounds)
+  [ ] Timer resets to 10 on every new question
+  [ ] Timeout auto-evaluates as wrong
+  [ ] Score only increases on correct answers
+  [ ] Streak resets on wrong and timeout
+  [ ] Flame shows at streak >= 3
+  [ ] High score persists on refresh
+  [ ] No question repeats in session
+  [ ] No layout breaks at 375px through 1440px
+  [ ] Zero TypeScript errors
+
+>> STOP — QA complete. Ready to deploy. <<
+
+
+================================================================
+SPRINT 12 — DEPLOY
+================================================================
+Goal     : Ship to production on Vercel
+Phase    : Deployment
+Produces : Live URL accessible to students
+
+TASKS
+
+  Task 12.1 — Production build check
+    nx build web
+    Must complete with zero errors
+
+  Task 12.2 — Push to GitHub
+    git init (if not already)
+    git add .
+    git commit -m "feat: Brain Impostor v1.0"
+    git remote add origin https://github.com/your-username/brain-impostor
+    git push -u origin main
+
+  Task 12.3 — Deploy on Vercel
+    Go to: vercel.com
+    Click: Add New Project
+    Import: your GitHub repo
+    Framework preset: Next.js (auto-detected)
+    Build command: nx build web (or leave as next build if NX configured)
+    Output directory: dist/apps/web/.next (or check NX output path)
+    Click: Deploy
+
+  Task 12.4 — Verify live URL
+    Open Vercel-provided URL
+    Play full game end-to-end on live URL
+    Test on mobile browser
+    Verify localStorage works on live URL
+
+  Task 12.5 — Share URL
+    Send to students or testers for feedback
+
+FILES CREATED THIS SPRINT
+  None — deployment only
+
+ACCEPTANCE CRITERIA
+  [ ] nx build web completes with zero errors
+  [ ] Code pushed to GitHub
+  [ ] Vercel deployment succeeds (green status)
+  [ ] Live URL opens and game works
+  [ ] Mobile works on live URL
+  [ ] localStorage high score works on live URL
+
+>> SPRINT 12 COMPLETE — SHIP IT <<
+
+
+================================================================
+SPRINT COMPLETION TRACKER
+================================================================
+
+Sprint   Description                   Phase        Done
+-------  ----------------------------  -----------  ------
+0        NX Workspace Setup            Foundation   [ ]
+1        TypeScript Types              Foundation   [ ]
+2        Static Question Data          Foundation   [ ]
+3        Game Engine (Pure Functions)  Core Logic   [ ]
+4        Basic Game UI (E2E Working)   Core UI      [ ]
+5        UI Component System           Components   [ ]
+6        Game Experience (Feel)        Game Feel    [ ]
+7        UI Polish (Visual)            Polish       [ ]
+8        LocalStorage Persistence      Persistence  [ ]
+9        Category + Difficulty UI      Polish       [ ]
+10       Mobile Optimization           Polish       [ ]
+11       Testing and QA                QA           [ ]
+12       Deploy to Vercel              Deploy       [ ]
+
+================================================================
+END OF SPRINTS.txt
+================================================================

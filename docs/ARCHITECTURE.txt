@@ -1,0 +1,356 @@
+================================================================
+ARCHITECTURE.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project  : Brain Impostor
+Version  : 1.0
+================================================================
+
+
+================================================================
+SECTION 1 — MONOREPO OVERVIEW
+================================================================
+
+Brain Impostor uses an NX Integrated Monorepo. All code lives
+in one repository. Apps consume shared libraries. Libraries
+are independent, reusable units with clear responsibilities.
+
+Workspace root: brain-impostor/
+
+Three layers:
+  1. apps/web     → the Next.js application (entry point, UI assembly)
+  2. libs/*       → shared libraries (types, data, logic, UI components)
+  3. Config root  → nx.json, tsconfig.base.json, package.json
+
+
+================================================================
+SECTION 2 — COMPLETE FOLDER STRUCTURE
+================================================================
+
+brain-impostor/
+├── apps/
+│   └── web/                                  Next.js application
+│       ├── app/
+│       │   ├── layout.tsx                    Root layout (dark theme, metadata)
+│       │   └── page.tsx                      Main game page — all state here
+│       ├── public/
+│       │   └── favicon.ico
+│       ├── next.config.js
+│       ├── tailwind.config.js
+│       ├── tsconfig.json
+│       └── project.json
+│
+├── libs/
+│   │
+│   ├── types/                                TypeScript types only
+│   │   └── src/
+│   │       ├── lib/
+│   │       │   └── question.ts               Category, Difficulty, Question types
+│   │       └── index.ts                      Barrel export
+│   │
+│   ├── data/                                 Static question bank only
+│   │   └── src/
+│   │       ├── lib/
+│   │       │   ├── questions.ts              All 120+ questions array
+│   │       │   └── constants.ts              CATEGORIES, DIFFICULTIES, TIMER, etc.
+│   │       └── index.ts                      Barrel export
+│   │
+│   ├── game/                                 Pure game logic only (no UI)
+│   │   └── src/
+│   │       ├── lib/
+│   │       │   └── game.ts                   getFilteredQuestions, getRandomQuestion,
+│   │       │                                 shuffleQuestion, isCorrectAnswer
+│   │       └── index.ts                      Barrel export
+│   │
+│   └── ui/                                   React UI components only (no logic)
+│       └── src/
+│           ├── lib/
+│           │   ├── GameCard.tsx              Single statement card
+│           │   ├── ScoreBoard.tsx            Score + streak + timer bar
+│           │   ├── DifficultySelect.tsx      Easy/Medium/Hard buttons
+│           │   ├── CategorySelect.tsx        Category buttons
+│           │   ├── ResultModal.tsx           Correct/Wrong popup
+│           │   └── ProgressBar.tsx           Visual timer bar
+│           └── index.ts                      Barrel export
+│
+├── nx.json                                   NX workspace config
+├── package.json                              Dependencies
+└── tsconfig.base.json                        Path aliases for @brain-impostor/*
+
+
+================================================================
+SECTION 3 — LIBRARY RESPONSIBILITIES (STRICT BOUNDARIES)
+================================================================
+
+LIBRARY: libs/types
+  PURPOSE   : Single source of truth for all TypeScript types
+  CONTAINS  : Category type, Difficulty type, Question type
+  IMPORTS   : Nothing (no dependencies)
+  EXPORTED  : All types re-exported via index.ts
+  RULE      : Never contains logic or UI — types ONLY
+
+LIBRARY: libs/data
+  PURPOSE   : Static question bank and game constants
+  CONTAINS  : questions.ts (array of Question objects)
+              constants.ts (CATEGORIES, TIMER_SECONDS, etc.)
+  IMPORTS   : @brain-impostor/types (for Question type)
+  EXPORTED  : questions array, constants
+  RULE      : Never contains logic or UI — data ONLY
+              Never fetches from external source
+
+LIBRARY: libs/game
+  PURPOSE   : All game logic as pure functions
+  CONTAINS  : getFilteredQuestions(), getRandomQuestion(),
+              shuffleQuestion(), isCorrectAnswer()
+  IMPORTS   : @brain-impostor/types, @brain-impostor/data
+  EXPORTED  : All game functions
+  RULE      : No React, no UI, no side effects
+              Pure functions only — input in, output out
+
+LIBRARY: libs/ui
+  PURPOSE   : Reusable React UI components
+  CONTAINS  : GameCard, ScoreBoard, DifficultySelect,
+              CategorySelect, ResultModal, ProgressBar
+  IMPORTS   : @brain-impostor/types (for prop types)
+  EXPORTED  : All components
+  RULE      : No game logic inside components
+              Receives everything via props
+              Fires callbacks — never manages game state
+
+APPLICATION: apps/web
+  PURPOSE   : Assembles everything, owns all game state
+  CONTAINS  : page.tsx (state + hooks + component assembly)
+              layout.tsx (root layout, dark theme)
+  IMPORTS   : @brain-impostor/types, @brain-impostor/game,
+              @brain-impostor/ui (NOT @brain-impostor/data directly)
+  RULE      : No raw game logic (use libs/game functions)
+              No raw data access (filter via libs/game)
+
+
+================================================================
+SECTION 4 — DEPENDENCY GRAPH (ONE-WAY ONLY)
+================================================================
+
+apps/web
+  |
+  |── imports ──► @brain-impostor/types
+  |── imports ──► @brain-impostor/game
+  └── imports ──► @brain-impostor/ui
+
+@brain-impostor/game
+  |── imports ──► @brain-impostor/types
+  └── imports ──► @brain-impostor/data
+
+@brain-impostor/data
+  └── imports ──► @brain-impostor/types
+
+@brain-impostor/ui
+  └── imports ──► @brain-impostor/types
+
+@brain-impostor/types
+  └── imports ──► (nothing)
+
+DEPENDENCY RULES:
+  libs/types   → no dependencies
+  libs/data    → types only
+  libs/game    → types + data
+  libs/ui      → types only (NO game, NO data)
+  apps/web     → types + game + ui  (NOT data directly)
+
+FORBIDDEN IMPORTS:
+  libs/ui      must NOT import from libs/game
+  libs/ui      must NOT import from libs/data
+  libs/data    must NOT import from libs/game
+  libs/game    must NOT import from libs/ui
+  apps/web     must NOT import from libs/data directly
+
+
+================================================================
+SECTION 5 — NX PATH ALIASES
+================================================================
+
+Defined in tsconfig.base.json at workspace root:
+
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@brain-impostor/types": ["libs/types/src/index.ts"],
+      "@brain-impostor/data":  ["libs/data/src/index.ts"],
+      "@brain-impostor/game":  ["libs/game/src/index.ts"],
+      "@brain-impostor/ui":    ["libs/ui/src/index.ts"]
+    }
+  }
+}
+
+Usage example:
+  import { Question } from '@brain-impostor/types';
+  import { shuffleQuestion } from '@brain-impostor/game';
+  import { GameCard } from '@brain-impostor/ui';
+
+
+================================================================
+SECTION 6 — BARREL EXPORT PATTERN
+================================================================
+
+Every library exposes one index.ts file as its public API.
+Never import from deep paths like:
+  import { X } from '@brain-impostor/game/src/lib/game'  ← WRONG
+
+Always import from the barrel:
+  import { X } from '@brain-impostor/game'               ← CORRECT
+
+libs/types/src/index.ts:
+  export * from './lib/question';
+
+libs/data/src/index.ts:
+  export * from './lib/questions';
+  export * from './lib/constants';
+
+libs/game/src/index.ts:
+  export * from './lib/game';
+
+libs/ui/src/index.ts:
+  export { GameCard }         from './lib/GameCard';
+  export { ScoreBoard }       from './lib/ScoreBoard';
+  export { DifficultySelect } from './lib/DifficultySelect';
+  export { CategorySelect }   from './lib/CategorySelect';
+  export { ResultModal }      from './lib/ResultModal';
+  export { ProgressBar }      from './lib/ProgressBar';
+
+
+================================================================
+SECTION 7 — STATE ARCHITECTURE
+================================================================
+
+All game state lives in apps/web/app/page.tsx.
+Components are stateless — they receive props and fire callbacks.
+No global state library. No context (not needed at this scale).
+
+State ownership:
+  page.tsx owns: selectedCategory, selectedDifficulty,
+                  gameStarted, currentQuestion, shuffledStatements,
+                  shuffledAnswerIdx, selectedIndex, isAnswered,
+                  isCorrect, timeLeft, score, streak, highScore,
+                  sessionHistory, showModal
+
+Hooks used:
+  useState    → all state values above
+  useEffect   → timer (setInterval), localStorage read on mount
+
+No external hook libraries. No custom hook file required
+(all logic is in pure functions in libs/game, called from page.tsx).
+
+
+================================================================
+SECTION 8 — NEXT.JS APP ROUTER SETUP
+================================================================
+
+apps/web/app/layout.tsx
+  'use client' not needed — layout is a server component
+  Sets: html lang, dark background class on body, metadata
+  Wraps: {children} in layout shell
+
+apps/web/app/page.tsx
+  'use client' required — uses useState and useEffect
+  Contains: all game state, all event handlers
+  Renders: conditional UI based on gameStarted state
+  Imports: UI components from @brain-impostor/ui
+  Imports: game functions from @brain-impostor/game
+  Does NOT directly import from @brain-impostor/data
+
+
+================================================================
+SECTION 9 — TAILWIND CSS SETUP
+================================================================
+
+Configured via: nx g @nx/next:setup-tailwind web
+
+tailwind.config.js content array includes:
+  './apps/web/**/*.{ts,tsx}'
+  './libs/ui/src/**/*.{ts,tsx}'
+
+globals.css (in apps/web/app/ or styles/):
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+
+Dark theme approach:
+  Background : bg-slate-900 on body (layout.tsx)
+  Cards      : bg-slate-800
+  Text       : text-white, text-slate-300
+  Correct    : bg-green-500 / bg-green-600
+  Wrong      : bg-red-500 / bg-red-600
+  Accent     : text-violet-400, border-violet-500
+  Timer red  : text-red-400 (when timeLeft <= 3)
+
+
+================================================================
+SECTION 10 — TYPESCRIPT CONFIGURATION
+================================================================
+
+tsconfig.base.json (workspace root):
+  strict: true
+  noImplicitAny: true
+  strictNullChecks: true
+  paths: (NX aliases — see Section 5)
+
+Each lib has its own tsconfig.json extending base:
+  libs/types/tsconfig.json
+  libs/data/tsconfig.json
+  libs/game/tsconfig.json
+  libs/ui/tsconfig.json
+
+apps/web/tsconfig.json also extends base.
+
+No 'any' type allowed anywhere in the codebase.
+All component props must have explicit TypeScript types.
+
+
+================================================================
+SECTION 11 — BUILD + SERVE COMMANDS
+================================================================
+
+Development:
+  nx serve web                          Run on localhost:3000
+
+Production build:
+  nx build web                          Output to dist/apps/web
+
+Type check:
+  nx run web:type-check
+
+Lint:
+  nx lint web
+  nx lint ui
+  nx lint game
+  nx lint data
+  nx lint types
+
+Check dependency graph:
+  nx graph                              Visual dep graph in browser
+
+Run all affected:
+  nx affected --target=build
+
+
+================================================================
+SECTION 12 — DEPLOYMENT ARCHITECTURE
+================================================================
+
+Platform : Vercel (recommended for Next.js)
+Steps:
+  1. Push code to GitHub
+  2. Import repo on vercel.com
+  3. Framework preset: Next.js (auto-detected)
+  4. Root directory: apps/web  (or configure build command)
+  5. Build command: nx build web --prod
+  6. Output dir: dist/apps/web
+  7. No environment variables needed
+  8. Click Deploy
+
+The game is fully static — no SSR, no API routes, no server.
+All state is client-side. Vercel serves static assets only.
+
+================================================================
+END OF ARCHITECTURE.txt
+================================================================

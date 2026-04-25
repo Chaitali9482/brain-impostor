@@ -1,0 +1,227 @@
+================================================================
+REQUIREMENTS.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project  : Brain Impostor
+Version  : 1.0
+Type     : Frontend-only, static data, no backend
+================================================================
+
+
+================================================================
+SECTION 1 — FUNCTIONAL REQUIREMENTS
+================================================================
+
+1.1  CATEGORY SELECTION
+------------------------
+FR-01  Game MUST display 4 category buttons: Science, Maths, GK, Food
+FR-02  Exactly ONE category must be selected before game can start
+FR-03  Selected category button MUST be visually highlighted (active state)
+FR-04  Changing category resets the current game session completely
+FR-05  Category selection screen MUST show all 4 categories simultaneously
+
+1.2  DIFFICULTY SELECTION
+--------------------------
+FR-06  Game MUST display 3 difficulty buttons: Easy, Medium, Hard
+FR-07  Exactly ONE difficulty must be selected before game can start
+FR-08  Selected difficulty button MUST be visually highlighted (active state)
+FR-09  Difficulty determines which question pool is used (separate pools)
+FR-10  Easy / Medium / Hard pools are filtered by difficulty field in data
+
+1.3  GAME START
+----------------
+FR-11  "Start Game" button MUST be disabled until both category + difficulty selected
+FR-12  On start, filter questions.ts by selected category AND difficulty
+FR-13  Pick one random question from the filtered pool
+FR-14  Shuffle the 4 statements using Fisher-Yates algorithm
+FR-15  Recalculate answerIndex to reflect new position after shuffle
+FR-16  Start the 10-second countdown timer immediately on question load
+
+1.4  QUESTION DISPLAY
+----------------------
+FR-17  Display exactly 4 statement cards per question (never 3, never 5)
+FR-18  Display the category label and difficulty badge on the question screen
+FR-19  Display the current score, streak, and timer in the top bar
+FR-20  All 4 cards MUST be clickable while awaiting player answer
+FR-21  No card is pre-highlighted before player selects
+
+1.5  ANSWER SELECTION
+----------------------
+FR-22  Clicking a card MUST immediately stop the timer
+FR-23  Clicking a card MUST immediately lock all other cards (no double select)
+FR-24  Selected card MUST be visually highlighted on click (pending state)
+FR-25  System evaluates answer and applies correct / wrong visual state
+
+1.6  FEEDBACK — CORRECT ANSWER
+--------------------------------
+FR-26  If selected card = answerIndex → correct outcome
+FR-27  Correct card turns GREEN
+FR-28  score += 10
+FR-29  streak += 1
+FR-30  If new score > stored highScore → update localStorage immediately
+
+1.7  FEEDBACK — WRONG ANSWER
+------------------------------
+FR-31  If selected card ≠ answerIndex → wrong outcome
+FR-32  Selected card turns RED
+FR-33  Correct card (answerIndex) turns GREEN to show the right answer
+FR-34  score unchanged
+FR-35  streak resets to 0
+
+1.8  TIMER TIMEOUT
+-------------------
+FR-36  If timer reaches 0 with no selection → auto-evaluate as wrong
+FR-37  Streak resets to 0 on timeout
+FR-38  Score unchanged on timeout
+FR-39  Correct card turns GREEN on timeout (show what was right)
+FR-40  ResultModal appears showing wrong outcome + explanation
+
+1.9  RESULT MODAL
+------------------
+FR-41  ResultModal MUST appear after every answer (correct, wrong, or timeout)
+FR-42  Modal shows outcome label: "Correct!" or "Wrong!"
+FR-43  Modal shows the explanation text from the question data
+FR-44  Modal shows a "Next Question" button
+FR-45  Modal MUST NOT auto-dismiss — player must press Next
+FR-46  On "Next Question": hide modal, load new random question, reset timer
+
+1.10 SCORE SYSTEM
+------------------
+FR-47  Score starts at 0 at game start
+FR-48  Correct answer → score += 10
+FR-49  Wrong answer or timeout → score unchanged
+FR-50  Score displays in real-time in ScoreBoard (top bar)
+FR-51  Score DOES NOT reset between questions within one session
+
+1.11 STREAK SYSTEM
+-------------------
+FR-52  Streak starts at 0 at game start
+FR-53  Correct answer → streak += 1
+FR-54  Wrong answer or timeout → streak = 0
+FR-55  Streak displays in real-time in ScoreBoard (top bar)
+FR-56  Streak of 3 or more MUST show a fire (flame) visual indicator
+
+1.12 TIMER SYSTEM
+------------------
+FR-57  Timer starts at 10 seconds when each question loads
+FR-58  Timer decrements by 1 every second via setInterval
+FR-59  Timer MUST stop immediately when player selects a card
+FR-60  Timer MUST reset to 10 at the start of each new question
+FR-61  Timer displays in ScoreBoard (top bar) in real time
+FR-62  Timer turns red or pulses visually when timeLeft <= 3
+
+1.13 HIGH SCORE
+----------------
+FR-63  High score loaded from localStorage key brainImpostor_highScore on mount
+FR-64  If localStorage value missing or null → highScore defaults to 0
+FR-65  After each correct answer: if score > highScore → save to localStorage
+FR-66  High score displayed in ScoreBoard top bar
+FR-67  High score persists across sessions (survives page refresh)
+
+1.14 SESSION + REPEAT PREVENTION
+----------------------------------
+FR-68  Track all question ids used in current session (sessionHistory array)
+FR-69  Do not serve the same question twice in one session
+FR-70  If all questions in pool are exhausted → reshuffle pool and restart pool
+FR-71  On full game restart: clear sessionHistory, reset score and streak
+
+1.15 RESTART / SETTINGS CHANGE
+--------------------------------
+FR-72  A "Restart" or "Change Settings" button MUST be accessible in-game
+FR-73  Pressing Restart resets ALL game state and returns to Setup Screen
+FR-74  highScore is NOT reset on Restart — persists from localStorage
+
+
+================================================================
+SECTION 2 — NON-FUNCTIONAL REQUIREMENTS
+================================================================
+
+2.1  PERFORMANCE
+-----------------
+NFR-01  First Contentful Paint under 2 seconds on 4G mobile connection
+NFR-02  Timer tick accurate to within ±100ms
+NFR-03  Card click response (visual feedback) under 50ms
+NFR-04  No unnecessary re-renders — state updates scoped to changed values
+
+2.2  RESPONSIVENESS
+--------------------
+NFR-05  Fully playable on mobile screens 375px and above
+NFR-06  Works on tablet (768px+) and desktop (1024px+)
+NFR-07  Minimum tap target 44×44px on all interactive elements
+NFR-08  Layout uses mobile-first Tailwind (default → md: → lg:)
+NFR-09  No horizontal scroll on any screen size
+
+2.3  USABILITY
+---------------
+NFR-10  Cards MUST have visible hover effect on desktop
+NFR-11  Selected card MUST have press / click animation (scale down)
+NFR-12  Timer urgency state visible at 3 seconds or less (color / pulse)
+NFR-13  All interactive elements have visible focus states (keyboard access)
+NFR-14  Disabled buttons visually distinct from enabled buttons
+
+2.4  CODE QUALITY
+------------------
+NFR-15  TypeScript strict mode enabled — no any type allowed
+NFR-16  All components are functional (no class components)
+NFR-17  Game logic lives ONLY in libs/game — not in components or page
+NFR-18  Question data lives ONLY in libs/data — nowhere else
+NFR-19  UI components live ONLY in libs/ui
+NFR-20  Types live ONLY in libs/types
+NFR-21  No inline styles — Tailwind utility classes only
+NFR-22  No external UI component libraries (no MUI, Shadcn, etc.)
+NFR-23  No external state management (no Redux, Zustand, Jotai, etc.)
+
+2.5  NX ARCHITECTURE
+---------------------
+NFR-24  Workspace must use NX integrated monorepo pattern
+NFR-25  app/web imports from libs via @brain-impostor/* path aliases only
+NFR-26  libs must not import from apps/web (one-way dependency)
+NFR-27  libs/game must not import from libs/ui (logic has no UI dependency)
+NFR-28  libs/data must not import from libs/game (data has no logic dependency)
+NFR-29  libs/types is the only lib imported by all other libs
+
+
+================================================================
+SECTION 3 — DATA REQUIREMENTS
+================================================================
+
+DR-01  All questions stored in libs/data/src/lib/questions.ts only
+DR-02  Minimum 10 questions per category per difficulty = 120 total
+       (4 categories × 3 difficulties × 10 questions minimum)
+DR-03  Every question conforms to the Question type in libs/types
+DR-04  Every question has exactly 4 statements — never 3, never 5
+DR-05  answerIndex must be 0, 1, 2, or 3 matching pre-shuffle array position
+DR-06  answerIndex must point to the actual false statement
+DR-07  explanation field must be non-empty for every question
+DR-08  id field must be unique across the entire questions array
+DR-09  No two questions may have identical statement arrays
+
+
+================================================================
+SECTION 4 — STORAGE REQUIREMENTS
+================================================================
+
+SR-01  ONLY key brainImpostor_highScore may be written to localStorage
+SR-02  No session data, no user data, no question history persisted
+SR-03  High score stored as numeric string — parseInt on read
+SR-04  App handles localStorage unavailability gracefully (private browsing)
+SR-05  localStorage read occurs on component mount via useEffect
+
+
+================================================================
+SECTION 5 — HARD RESTRICTIONS (MUST NOT VIOLATE)
+================================================================
+
+RESTRICTION-01  No backend of any kind
+RESTRICTION-02  No API calls — external or internal
+RESTRICTION-03  No Firebase or other BaaS
+RESTRICTION-04  No authentication or user accounts
+RESTRICTION-05  No dynamic AI question generation at runtime
+RESTRICTION-06  No question data outside libs/data/src/lib/questions.ts
+RESTRICTION-07  No external UI component libraries
+RESTRICTION-08  No external state management libraries
+RESTRICTION-09  No server components for game logic — use client directive
+RESTRICTION-10  No modification of the Question schema field names or types
+
+================================================================
+END OF REQUIREMENTS.txt
+================================================================

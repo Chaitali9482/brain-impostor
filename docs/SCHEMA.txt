@@ -1,0 +1,463 @@
+================================================================
+SCHEMA.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project  : Brain Impostor
+Version  : 1.0
+================================================================
+
+
+================================================================
+SECTION 1 — CORE QUESTION TYPE (LOCKED — DO NOT MODIFY)
+================================================================
+
+File: libs/types/src/lib/question.ts
+
+--------------------------------------------------------------
+export type Category = "Science" | "Maths" | "GK" | "Food";
+
+export type Difficulty = "easy" | "medium" | "hard";
+
+export type Question = {
+  id          : number;
+  category    : Category;
+  difficulty  : Difficulty;
+  statements  : [string, string, string, string];   // tuple — exactly 4
+  answerIndex : number;                              // 0 | 1 | 2 | 3
+  explanation : string;
+};
+--------------------------------------------------------------
+
+FIELD REFERENCE TABLE
+
+Field        Type                        Required  Rules
+-----------  --------------------------  --------  --------------------------------
+id           number                      YES       Unique positive integer globally
+category     "Science"|"Maths"|"GK"|    YES       Exact string match required
+             "Food"
+difficulty   "easy"|"medium"|"hard"      YES       Exact string match required
+statements   [string,string,string,      YES       Tuple of exactly 4 strings
+             string]
+answerIndex  number (0 | 1 | 2 | 3)    YES       Points to false statement
+                                                   in pre-shuffle order
+explanation  string                      YES       Non-empty, explains why false
+
+WARNING: This schema is LOCKED. Do not add, remove, or rename
+any field. Do not change Category or Difficulty union values.
+
+
+================================================================
+SECTION 2 — CATEGORY VALUES (EXACT STRINGS)
+================================================================
+
+const CATEGORIES = ['Science', 'Maths', 'GK', 'Food'] as const;
+
+Value       Covers
+----------  -------------------------------------------------------
+"Science"   Biology, Physics, Chemistry — Class 10-12 curriculum
+"Maths"     Numbers, formulas, geometry, algebra facts
+"GK"        History, geography, general world knowledge
+"Food"      Food science, nutrition, cooking facts (fun category)
+
+
+================================================================
+SECTION 3 — DIFFICULTY VALUES (EXACT STRINGS)
+================================================================
+
+const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+
+Value     Description                    False Statement Style
+--------  -----------------------------  -----------------------------------
+"easy"    Obvious wrong fact             Clearly different from the truth
+"medium"  Slightly tricky wording        Off by common misconception
+"hard"    Subtle detail wrong            Wrong number, sequence, relationship
+
+
+================================================================
+SECTION 4 — MINIMUM DATA QUANTITY
+================================================================
+
+Minimum 10 questions per category per difficulty = 120 total
+
+Category   Easy   Medium   Hard   Category Total
+---------  -----  -------  -----  --------------
+Science    10     10       10     30
+Maths      10     10       10     30
+GK         10     10       10     30
+Food       10     10       10     30
+TOTAL      40     40       40     120
+
+
+================================================================
+SECTION 5 — DATA VALIDATION RULES
+================================================================
+
+These rules MUST hold for every question in questions.ts:
+
+RULE-01   statements.length === 4  (exactly 4, no more, no less)
+RULE-02   answerIndex >= 0 AND answerIndex <= 3
+RULE-03   statements[answerIndex] IS the false statement
+RULE-04   explanation.trim().length > 0  (non-empty)
+RULE-05   id is unique across the ENTIRE questions array
+RULE-06   category is one of: "Science" | "Maths" | "GK" | "Food"
+RULE-07   difficulty is one of: "easy" | "medium" | "hard"
+RULE-08   No two questions have identical statement arrays
+RULE-09   The 3 true statements must be verifiably correct facts
+RULE-10   The 1 false statement must have exactly ONE wrong detail
+
+
+================================================================
+SECTION 6 — RUNTIME SHUFFLED SHAPE
+================================================================
+
+After shuffleQuestion() runs, components receive this shape.
+This is NEVER stored — always derived at runtime each question load.
+
+Example: Original question
+  id          : 1
+  answerIndex : 3   (statements[3] is false)
+  statements  : [
+    "The Earth revolves around the Sun.",    // index 0
+    "Water boils at 100 degrees at sea level", // index 1
+    "The chemical symbol for gold is Au.",   // index 2
+    "Sound travels faster than light."       // index 3 ← FALSE
+  ]
+
+After shuffle (example result):
+  statements  : [
+    "The chemical symbol for gold is Au.",   // was 2
+    "Sound travels faster than light.",      // was 3 ← FALSE — now at index 1
+    "The Earth revolves around the Sun.",    // was 0
+    "Water boils at 100 degrees at sea level" // was 1
+  ]
+  answerIndex : 1   ← UPDATED from 3 to 1 (new position of false statement)
+
+The explanation and all other fields remain unchanged.
+
+
+================================================================
+SECTION 7 — GAME STATE SHAPE
+================================================================
+
+Used inside useGameLogic hook in apps/web/app/page.tsx
+
+Setup State
+  selectedCategory    : Category | null   = null
+  selectedDifficulty  : Difficulty | null = null
+  gameStarted         : boolean           = false
+
+Question State
+  currentQuestion     : Question | null   = null
+  shuffledStatements  : string[]          = []
+  shuffledAnswerIdx   : number            = -1
+  selectedIndex       : number | null     = null
+  isAnswered          : boolean           = false
+  isCorrect           : boolean | null    = null
+
+Timer State
+  timeLeft            : number            = 10
+
+Score State
+  score               : number            = 0
+  streak              : number            = 0
+  highScore           : number            = (localStorage or 0)
+
+Session State
+  sessionHistory      : number[]          = []   (question ids this session)
+  showModal           : boolean           = false
+
+
+================================================================
+SECTION 8 — COMPONENT PROP SCHEMAS
+================================================================
+
+GameCard Props
+  statement     : string          the statement text to display
+  index         : number          0-3, position in shuffledStatements
+  selectedIndex : number | null   which index player clicked (null if not yet)
+  correctIndex  : number          shuffledAnswerIdx — shown after answer
+  isAnswered    : boolean         true after player clicks or timer hits 0
+  onSelect      : (index: number) => void
+
+ScoreBoard Props
+  score         : number          current session score
+  streak        : number          consecutive correct answers
+  highScore     : number          from localStorage
+  timeLeft      : number          0-10
+
+DifficultySelect Props
+  selected      : Difficulty | null
+  onSelect      : (difficulty: Difficulty) => void
+
+CategorySelect Props
+  selected      : Category | null
+  onSelect      : (category: Category) => void
+
+ResultModal Props
+  isCorrect     : boolean
+  explanation   : string
+  onNext        : () => void
+
+ProgressBar Props
+  timeLeft      : number          0-10
+  maxTime       : number          always 10
+
+
+================================================================
+SECTION 9 — LOCALSTORAGE SCHEMA
+================================================================
+
+Only ONE key is ever written to localStorage:
+
+Key                          Type     Description
+---------------------------  -------  --------------------------------
+brainImpostor_highScore      string   Highest score across all sessions
+                             (numeric  stored as String(number),
+                              as str)  read back as parseInt(value, 10)
+
+Read pattern:
+  const raw = localStorage.getItem('brainImpostor_highScore')
+  const highScore = raw ? parseInt(raw, 10) : 0
+
+Write pattern (only when new score beats highScore):
+  localStorage.setItem('brainImpostor_highScore', String(newScore))
+
+No other localStorage keys are used. No sessionStorage. No cookies.
+
+
+================================================================
+SECTION 10 — CONSTANTS FILE SCHEMA
+================================================================
+
+File: libs/data/src/lib/constants.ts
+
+export const CATEGORIES            = ['Science', 'Maths', 'GK', 'Food'] as const;
+export const DIFFICULTIES          = ['easy', 'medium', 'hard'] as const;
+export const TIMER_SECONDS         = 10;
+export const SCORE_PER_CORRECT     = 10;
+export const STREAK_FIRE_THRESHOLD = 3;
+export const HIGH_SCORE_KEY        = 'brainImpostor_highScore';
+
+
+================================================================
+SECTION 11 — NX PATH ALIAS MAP
+================================================================
+
+Alias                       Points to
+--------------------------  -----------------------------------
+@brain-impostor/types       libs/types/src/index.ts
+@brain-impostor/data        libs/data/src/index.ts
+@brain-impostor/game        libs/game/src/index.ts
+@brain-impostor/ui          libs/ui/src/index.ts
+
+Configured in tsconfig.base.json at workspace root:
+{
+  "compilerOptions": {
+    "paths": {
+      "@brain-impostor/types": ["libs/types/src/index.ts"],
+      "@brain-impostor/data":  ["libs/data/src/index.ts"],
+      "@brain-impostor/game":  ["libs/game/src/index.ts"],
+      "@brain-impostor/ui":    ["libs/ui/src/index.ts"]
+    }
+  }
+}
+
+
+================================================================
+SECTION 12 — SAMPLE QUESTIONS (1 PER CATEGORY PER DIFFICULTY)
+================================================================
+
+--- SCIENCE / EASY ---
+{
+  id: 1,
+  category: "Science",
+  difficulty: "easy",
+  statements: [
+    "Photosynthesis occurs in the chloroplast.",
+    "Humans have 206 bones in their body.",
+    "The Earth has one natural satellite.",
+    "The heart is located on the right side of the chest."
+  ],
+  answerIndex: 3,
+  explanation: "The human heart is located slightly to the LEFT of
+  the chest center, not the right."
+}
+
+--- SCIENCE / MEDIUM ---
+{
+  id: 2,
+  category: "Science",
+  difficulty: "medium",
+  statements: [
+    "Newton's first law is called the law of inertia.",
+    "The atomic number of carbon is 6.",
+    "Mitosis results in two genetically identical daughter cells.",
+    "The speed of light in vacuum is approximately 2x10^8 m/s."
+  ],
+  answerIndex: 3,
+  explanation: "The speed of light in vacuum is approximately 3x10^8 m/s
+  (299,792,458 m/s), not 2x10^8."
+}
+
+--- SCIENCE / HARD ---
+{
+  id: 3,
+  category: "Science",
+  difficulty: "hard",
+  statements: [
+    "DNA replication occurs during the S phase of the cell cycle.",
+    "The enzyme responsible for DNA replication is DNA polymerase.",
+    "Adenine pairs with Thymine in DNA via three hydrogen bonds.",
+    "Guanine pairs with Cytosine in DNA."
+  ],
+  answerIndex: 2,
+  explanation: "Adenine pairs with Thymine via TWO hydrogen bonds,
+  not three. Guanine-Cytosine pairs have three hydrogen bonds."
+}
+
+--- MATHS / EASY ---
+{
+  id: 11,
+  category: "Maths",
+  difficulty: "easy",
+  statements: [
+    "The sum of angles in a triangle is 180 degrees.",
+    "A square has 4 equal sides.",
+    "Pi is approximately 3.14.",
+    "The square root of 144 is 14."
+  ],
+  answerIndex: 3,
+  explanation: "The square root of 144 is 12, not 14. 12 x 12 = 144."
+}
+
+--- MATHS / MEDIUM ---
+{
+  id: 12,
+  category: "Maths",
+  difficulty: "medium",
+  statements: [
+    "A prime number has exactly two factors.",
+    "The LCM of 4 and 6 is 12.",
+    "The probability of an impossible event is 0.",
+    "The HCF of 18 and 24 is 8."
+  ],
+  answerIndex: 3,
+  explanation: "The HCF of 18 and 24 is 6, not 8.
+  Factors of 18: 1,2,3,6,9,18. Factors of 24: 1,2,3,4,6,8,12,24.
+  Highest common factor = 6."
+}
+
+--- MATHS / HARD ---
+{
+  id: 13,
+  category: "Maths",
+  difficulty: "hard",
+  statements: [
+    "The derivative of sin(x) is cos(x).",
+    "log(ab) = log(a) + log(b).",
+    "The sum of first n natural numbers is n(n+1)/2.",
+    "The derivative of ln(x) is 1/x squared."
+  ],
+  answerIndex: 3,
+  explanation: "The derivative of ln(x) is 1/x, not 1/x squared.
+  d/dx[ln(x)] = 1/x."
+}
+
+--- GK / EASY ---
+{
+  id: 21,
+  category: "GK",
+  difficulty: "easy",
+  statements: [
+    "The capital of India is New Delhi.",
+    "The Nile is the longest river in the world.",
+    "The Great Wall of China is in China.",
+    "Mount Everest is located in the Alps."
+  ],
+  answerIndex: 3,
+  explanation: "Mount Everest is in the Himalayas on the Nepal-Tibet
+  border, not the Alps. The Alps are a mountain range in Europe."
+}
+
+--- GK / MEDIUM ---
+{
+  id: 22,
+  category: "GK",
+  difficulty: "medium",
+  statements: [
+    "World War II ended in 1945.",
+    "The United Nations was founded in 1945.",
+    "India gained independence in 1947.",
+    "The first Moon landing was in 1971."
+  ],
+  answerIndex: 3,
+  explanation: "The first Moon landing was on July 20, 1969 (Apollo 11),
+  not 1971."
+}
+
+--- GK / HARD ---
+{
+  id: 23,
+  category: "GK",
+  difficulty: "hard",
+  statements: [
+    "The Magna Carta was signed in 1215.",
+    "Nelson Mandela served as South Africa's president from 1994 to 1999.",
+    "The Berlin Wall fell in November 1989.",
+    "The French Revolution began with the storming of the Bastille on July 4."
+  ],
+  answerIndex: 3,
+  explanation: "The Bastille was stormed on July 14, 1789, not July 4.
+  July 14 is celebrated as Bastille Day in France."
+}
+
+--- FOOD / EASY ---
+{
+  id: 31,
+  category: "Food",
+  difficulty: "easy",
+  statements: [
+    "Oranges are a good source of Vitamin C.",
+    "Milk contains calcium.",
+    "Bananas are a good source of potassium.",
+    "Carrots are rich in Vitamin B12."
+  ],
+  answerIndex: 3,
+  explanation: "Carrots are rich in beta-carotene (Vitamin A precursor),
+  not Vitamin B12. B12 is found primarily in animal products."
+}
+
+--- FOOD / MEDIUM ---
+{
+  id: 32,
+  category: "Food",
+  difficulty: "medium",
+  statements: [
+    "Yeast is used in bread making for fermentation.",
+    "Olive oil is extracted from olives.",
+    "Vinegar is produced through fermentation of alcohol.",
+    "Butter is made by churning cream and has about 60% fat content."
+  ],
+  answerIndex: 3,
+  explanation: "Butter typically contains around 80% fat, not 60%.
+  The remaining 20% is water and milk solids."
+}
+
+--- FOOD / HARD ---
+{
+  id: 33,
+  category: "Food",
+  difficulty: "hard",
+  statements: [
+    "The Maillard reaction is responsible for browning of bread crust.",
+    "Capsaicin in chillies binds to TRPV1 receptors causing heat sensation.",
+    "Umami is the fifth basic taste triggered by glutamates.",
+    "Dark chocolate has a lower cocoa content than milk chocolate."
+  ],
+  answerIndex: 3,
+  explanation: "Dark chocolate has a HIGHER cocoa content (50-90%) than
+  milk chocolate (10-50%). That higher cocoa content makes it darker and more bitter."
+}
+
+================================================================
+END OF SCHEMA.txt
+================================================================

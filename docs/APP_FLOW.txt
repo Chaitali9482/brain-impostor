@@ -1,0 +1,419 @@
+================================================================
+APP_FLOW.txt — Brain Impostor (NX Monorepo)
+================================================================
+Project  : Brain Impostor
+Version  : 1.0
+================================================================
+
+
+================================================================
+SECTION 1 — HIGH-LEVEL FLOW DIAGRAM
+================================================================
+
+[ App Mount ]
+      |
+      | Read brainImpostor_highScore from localStorage
+      | highScore = stored value or 0
+      |
+      v
+[ Setup Screen ]
+      |
+      | Player selects Category (Science / Maths / GK / Food)
+      | Player selects Difficulty (Easy / Medium / Hard)
+      | Both selected → "Start Game" button becomes active
+      |
+      | Player clicks Start Game
+      v
+[ Load Question ]
+      |
+      | getFilteredQuestions(category, difficulty)
+      | getRandomQuestion(filteredPool) — exclude sessionHistory ids
+      | shuffleQuestion(question) — Fisher-Yates + recalculate answerIndex
+      | Add question id to sessionHistory[]
+      | Reset: selectedIndex=null, isAnswered=false, timeLeft=10
+      | Start timer interval (setInterval 1000ms)
+      |
+      v
+[ Question Screen — Active ]
+      |
+      |──────────────────────────────────────────────────────────┐
+      |                                                          |
+      | Player clicks a card                          Timer reaches 0
+      |                                                          |
+      | Stop timer interval                           Stop timer interval
+      | selectedIndex = clicked index                 selectedIndex = null
+      | isAnswered = true                             isAnswered = true
+      |                                               (timeout path)
+      |                                                          |
+      └──────────────────────┬───────────────────────────────────┘
+                             |
+                             v
+                  [ evaluateAnswer() ]
+                             |
+              ┌──────────────┴──────────────┐
+              |                             |
+              | CORRECT                     | WRONG / TIMEOUT
+              | (selected === answerIndex)  | (selected !== answerIndex
+              |                             |  OR selected === null)
+              |                             |
+              | score += 10                 | score unchanged
+              | streak += 1                 | streak = 0
+              | card → GREEN                | selected card → RED
+              | check highScore             | correct card → GREEN
+              | update localStorage         |
+              |                             |
+              └──────────────┬──────────────┘
+                             |
+                             v
+                   [ ResultModal shows ]
+                             |
+                   | Outcome: Correct / Wrong
+                   | Explanation text displayed
+                   | "Next Question" button shown
+                             |
+                   Player clicks "Next Question"
+                             |
+                             v
+                   [ Load Next Question ]
+                   (loop back to Load Question step)
+                             |
+                             |
+              ┌──────────────┘
+              |
+              | OR Player clicks "Restart / Change Settings"
+              |
+              v
+        [ Reset All State ]
+        score = 0, streak = 0
+        sessionHistory = []
+        selectedCategory = null
+        selectedDifficulty = null
+        gameStarted = false
+              |
+              v
+        [ Setup Screen ]
+
+
+================================================================
+SECTION 2 — SCREEN-BY-SCREEN DETAIL
+================================================================
+
+SCREEN 1: Setup Screen
+-----------------------
+Components : CategorySelect, DifficultySelect, page.tsx
+
+Step  Action                              Result
+----  ----------------------------------  -----------------------------------
+1     App mounts                          Read localStorage highScore
+2     Player clicks a category button     selectedCategory state updates
+                                          Button highlights (active style)
+3     Player clicks a difficulty button   selectedDifficulty state updates
+                                          Button highlights (active style)
+4     Both category + difficulty set      Start Game button becomes enabled
+5     Player clicks Start Game            gameStarted = true
+                                          Transition to Question Screen
+
+
+SCREEN 2: Question Screen
+--------------------------
+Components : ScoreBoard, GameCard x4, ProgressBar, page.tsx
+
+Step  Action                              Result
+----  ----------------------------------  -----------------------------------
+1     Question screen mounts              getFilteredQuestions() runs
+                                          getRandomQuestion() picks one
+                                          shuffleQuestion() shuffles + fixes index
+                                          Timer starts (setInterval 1000ms)
+2     Timer ticks                         timeLeft decrements each second
+                                          ScoreBoard timer updates live
+3     timeLeft reaches 3                  Timer display turns red (urgency)
+4     timeLeft reaches 0                  evaluateAnswer(null) called
+                                          Timeout = wrong path
+5     Player clicks a card               Stop timer
+                                          isAnswered = true
+                                          selectedIndex = clicked index
+                                          evaluateAnswer(index) called
+6a    CORRECT path                        score += 10, streak += 1
+                                          GameCard at answerIndex → green
+                                          localStorage updated if new highScore
+6b    WRONG path                          streak = 0
+                                          Clicked card → red
+                                          Correct card → green
+7     Either path                         showModal = true
+                                          ResultModal appears
+
+
+SCREEN 3: Result Modal
+-----------------------
+Component : ResultModal
+
+Step  Action                              Result
+----  ----------------------------------  -----------------------------------
+1     Modal appears                       Outcome label shows (Correct / Wrong)
+2     Explanation rendered                question.explanation text shown
+3     Player clicks "Next Question"       showModal = false
+                                          loadNextQuestion() called
+                                          Timer resets to 10
+                                          Cards reset to default state
+
+
+================================================================
+SECTION 3 — STATE MAP (useGameLogic hook)
+================================================================
+
+SETUP STATE
+  selectedCategory    : string | null   default: null
+  selectedDifficulty  : string | null   default: null
+  gameStarted         : boolean         default: false
+
+QUESTION STATE
+  currentQuestion     : Question | null default: null
+  shuffledStatements  : string[]        default: []
+  shuffledAnswerIdx   : number          default: -1
+  selectedIndex       : number | null   default: null
+  isAnswered          : boolean         default: false
+  isCorrect           : boolean | null  default: null
+
+TIMER STATE
+  timeLeft            : number          default: 10
+
+SCORE STATE
+  score               : number          default: 0
+  streak              : number          default: 0
+  highScore           : number          default: (from localStorage or 0)
+
+SESSION STATE
+  sessionHistory      : number[]        default: []   (question ids used)
+  showModal           : boolean         default: false
+
+
+================================================================
+SECTION 4 — STATE TRANSITIONS
+================================================================
+
+ON startGame():
+  gameStarted = true
+  call loadNextQuestion()
+
+ON loadNextQuestion():
+  pool = getFilteredQuestions(selectedCategory, selectedDifficulty)
+  available = pool.filter(q => !sessionHistory.includes(q.id))
+  IF available.length === 0:
+    sessionHistory = []         // pool exhausted — reshuffle
+    available = pool
+  question = getRandomQuestion(available)
+  result = shuffleQuestion(question)
+  currentQuestion = question
+  shuffledStatements = result.statements
+  shuffledAnswerIdx = result.answerIndex
+  sessionHistory.push(question.id)
+  selectedIndex = null
+  isAnswered = false
+  isCorrect = null
+  showModal = false
+  timeLeft = 10
+  START timer interval
+
+ON timerTick():
+  timeLeft -= 1
+  IF timeLeft === 0:
+    STOP timer interval
+    call evaluateAnswer(null)
+
+ON selectAnswer(index: number):
+  IF isAnswered → return (guard — no double select)
+  STOP timer interval
+  selectedIndex = index
+  isAnswered = true
+  call evaluateAnswer(index)
+
+ON evaluateAnswer(index: number | null):
+  isCorrect = (index !== null && index === shuffledAnswerIdx)
+  IF isCorrect:
+    score += 10
+    streak += 1
+    IF score > highScore:
+      highScore = score
+      localStorage.setItem('brainImpostor_highScore', String(score))
+  ELSE:
+    streak = 0
+  showModal = true
+
+ON nextQuestion():
+  showModal = false
+  call loadNextQuestion()
+
+ON restart():
+  STOP any running timer interval
+  selectedCategory   = null
+  selectedDifficulty = null
+  gameStarted        = false
+  currentQuestion    = null
+  shuffledStatements = []
+  shuffledAnswerIdx  = -1
+  selectedIndex      = null
+  isAnswered         = false
+  isCorrect          = null
+  timeLeft           = 10
+  score              = 0
+  streak             = 0
+  sessionHistory     = []
+  showModal          = false
+  (highScore is NOT reset — reads from localStorage again)
+
+
+================================================================
+SECTION 5 — SHUFFLE ALGORITHM (CRITICAL)
+================================================================
+
+Function: shuffleQuestion(question: Question): Question
+
+  Step 1: Pair each statement with its original index
+    pairs = statements.map((text, index) => ({
+      text,
+      isCorrect: index === question.answerIndex
+    }))
+
+  Step 2: Fisher-Yates shuffle on pairs array
+    for i from pairs.length - 1 down to 1:
+      j = random integer 0 to i (inclusive)
+      swap pairs[i] and pairs[j]
+
+  Step 3: Extract shuffled statements
+    shuffledStatements = pairs.map(p => p.text)
+
+  Step 4: Find new position of false statement
+    newAnswerIndex = pairs.findIndex(p => p.isCorrect === true)
+
+  Step 5: Return updated question
+    return {
+      ...question,
+      statements: shuffledStatements,
+      answerIndex: newAnswerIndex
+    }
+
+WHY THIS MATTERS:
+  The original answerIndex (e.g. 1) refers to the pre-shuffle order.
+  After shuffle, the false statement moves to a new index (e.g. 3).
+  If we don't update answerIndex, the game evaluates the wrong card
+  as correct. This function guarantees correct mapping every time.
+
+
+================================================================
+SECTION 6 — COMPONENT DATA FLOW
+================================================================
+
+page.tsx  (owns all state via useGameLogic hook)
+  |
+  |── CategorySelect
+  |     receives : selectedCategory (string | null)
+  |     receives : onSelect (category: string) => void
+  |
+  |── DifficultySelect
+  |     receives : selectedDifficulty (string | null)
+  |     receives : onSelect (difficulty: string) => void
+  |
+  |── ScoreBoard
+  |     receives : score (number)
+  |     receives : streak (number)
+  |     receives : highScore (number)
+  |     receives : timeLeft (number)
+  |
+  |── GameCard  (rendered x4, one per statement)
+  |     receives : statement (string)
+  |     receives : index (number, 0-3)
+  |     receives : selectedIndex (number | null)
+  |     receives : correctIndex (number, shuffledAnswerIdx)
+  |     receives : isAnswered (boolean)
+  |     receives : onSelect (index: number) => void
+  |
+  |── ProgressBar
+  |     receives : timeLeft (number)
+  |     receives : maxTime (number, always 10)
+  |
+  └── ResultModal
+        receives : isCorrect (boolean)
+        receives : explanation (string)
+        receives : onNext () => void
+
+
+================================================================
+SECTION 7 — TIMER IMPLEMENTATION PATTERN
+================================================================
+
+useEffect(() => {
+  if (!gameStarted || isAnswered) return;    // don't run if game not active
+
+  const interval = setInterval(() => {
+    setTimeLeft(prev => {
+      if (prev <= 1) {
+        clearInterval(interval);
+        evaluateAnswer(null);               // null = timeout = wrong
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);     // cleanup on unmount or answer
+
+}, [gameStarted, isAnswered, currentQuestion]);
+
+NOTE: Dependency array includes currentQuestion so timer restarts
+when a new question loads.
+
+
+================================================================
+SECTION 8 — LOCALSTORAGE FLOW
+================================================================
+
+ON MOUNT (useEffect with empty dependency array []):
+  const raw = localStorage.getItem('brainImpostor_highScore')
+  highScore = raw ? parseInt(raw, 10) : 0
+  setHighScore(highScore)
+
+ON CORRECT ANSWER (inside evaluateAnswer):
+  IF score + 10 > highScore:
+    newHighScore = score + 10
+    setHighScore(newHighScore)
+    localStorage.setItem('brainImpostor_highScore', String(newHighScore))
+
+ON RESTART:
+  score = 0 (session resets)
+  highScore stays — re-read from localStorage on mount or kept in state
+
+
+================================================================
+SECTION 9 — GAME CARD VISUAL STATE LOGIC
+================================================================
+
+A GameCard receives props and determines its visual state:
+
+  state = 'default'
+    IF isAnswered === false
+    → Normal dark card, hover effect active
+
+  state = 'correct'
+    IF isAnswered === true AND index === correctIndex
+    → Green background regardless of whether player selected it
+
+  state = 'wrong'
+    IF isAnswered === true
+    AND index === selectedIndex
+    AND selectedIndex !== correctIndex
+    → Red background (player's wrong pick)
+
+  state = 'disabled'
+    IF isAnswered === true
+    AND index !== selectedIndex
+    AND index !== correctIndex
+    → Dimmed / faded, no hover effect
+
+This logic means after every answer:
+  - Correct card = always green
+  - Player's wrong pick = red
+  - Other two cards = dimmed
+
+================================================================
+END OF APP_FLOW.txt
+================================================================

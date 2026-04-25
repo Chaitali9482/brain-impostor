@@ -1,0 +1,10 @@
+node_modules
+.nx/cache
+tmp
+apps/web/.next
+apps/web/out
+apps/web/dist
+libs/**/dist
+libs/**/out-tsc
+coverage
+*.log
