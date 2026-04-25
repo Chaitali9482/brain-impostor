@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm ci",
-  "buildCommand": "cd .. && npm run vercel-build",
-  "outputDirectory": ".next"
+  "installCommand": "cd .. && npm ci",
+  "buildCommand": "cd .. && npx nx build web",
+  "outputDirectory": "apps/web/.next"
 }
