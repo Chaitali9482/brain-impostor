@@ -145,11 +145,13 @@ export function useGameLogic() {
 
     const pool = getFilteredQuestions(category, difficulty);
 
-    if (currentQuestionIndex >= pool.length - 1) {
+    if (currentQuestion && currentQuestionIndex >= pool.length - 1) {
       setGameState('gameOver');
       playGameSound('gameOver');
       return;
     }
+
+    const nextQuestionIndex = currentQuestion ? currentQuestionIndex + 1 : 0;
 
     let remaining = pool.filter((question) => !sessionHistory.includes(question.id));
     let nextSessionHistory = sessionHistory;
@@ -164,7 +166,7 @@ export function useGameLogic() {
 
     setCurrentQuestion(shuffled);
     setSessionHistory([...nextSessionHistory, picked.id]);
-    setCurrentQuestionIndex((prev) => prev + 1);
+    setCurrentQuestionIndex(nextQuestionIndex);
     setSelectedAnswerIndex(null);
     setIsAnswered(false);
     setTimer(10);
